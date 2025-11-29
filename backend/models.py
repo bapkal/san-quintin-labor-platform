@@ -36,14 +36,14 @@ class Contract(BaseModel):
     pay: str
     location: str
     date: str
-    status: str  # 'pending', 'accepted', 'rejected'
-    worker_id: Optional[int] = None
+    status: str  # 'pending', 'accepted', 'rejected', 'signed', 'completed'
+    worker_id: Optional[str] = None  # UUID string
     created_at: Optional[str] = None
 
 
 class ContractCreate(BaseModel):
     job_id: int
-    worker_id: Optional[int] = None
+    worker_id: Optional[str] = None  # UUID string
 
 
 class ContractUpdate(BaseModel):

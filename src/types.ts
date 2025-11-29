@@ -5,6 +5,10 @@ export type Job = {
   location: string;
   date: string;
   description?: string;
+  crop_type?: string;
+  workers_requested?: number;
+  pay_rate_mxn?: number;
+  service_time_mins?: number;
 };
 
 export type Contract = {
@@ -14,6 +18,8 @@ export type Contract = {
   pay: string;
   location: string;
   date: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'signed' | 'completed';
+  workerId?: string;
+  createdAt?: string;
 };
 

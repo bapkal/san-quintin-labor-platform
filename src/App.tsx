@@ -1,14 +1,14 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import JobsPage from './pages/JobsPage';
-import MyContractsPage from './pages/MyContractsPage';
-import DashboardPage from './pages/DashboardPage';
-import AdminPage from './pages/AdminPage';
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Navbar from "./components/Navbar";
+import JobsPage from "./pages/JobsPage";
+import MyContractsPage from "./pages/MyContractsPage";
+import DashboardPage from "./pages/DashboardPage";
+import AdminPage from "./pages/AdminPage";
 
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background text-foreground">
         <Routes>
           <Route path="/" element={<JobsPage />} />
           <Route path="/jobs" element={<JobsPage />} />

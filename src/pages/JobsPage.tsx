@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react';
-import type { Job, Contract } from '../types';
-import JobCard from '../components/JobCard';
+import { useState, useEffect, useMemo } from "react";
+import { AudioLines, RefreshCw, ShieldCheck, Wifi } from "lucide-react";
+
+import type { Job, Contract } from "../types";
+import JobCard from "../components/JobCard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     fetchJobs();
@@ -14,19 +21,31 @@ export default function JobsPage() {
   const fetchJobs = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/jobs');
+      const response = await fetch("http://localhost:8000/jobs");
       if (!response.ok) {
-        throw new Error('Error loading jobs');
+        throw new Error("Error loading jobs");
       }
       const data = await response.json();
       setJobs(data);
     } catch (err) {
-      setError('Could not load jobs. Please verify the server is running.');
-      console.error('Error fetching jobs:', err);
+      setError("Could not load jobs. Please verify the server is running.");
+      console.error("Error fetching jobs:", err);
       // Fallback to sample data
       setJobs([
-        { id: 1, title: 'Tomato Picker', pay: '$12/hr', location: 'Farm A', date: 'Nov 20, 2025' },
-        { id: 2, title: 'Berry Harvester', pay: '$10/hr', location: 'Farm B', date: 'Nov 21, 2025' },
+        {
+          id: 1,
+          title: "Tomato Picker",
+          pay: "$12/hr",
+          location: "Farm A",
+          date: "Nov 20, 2025",
+        },
+        {
+          id: 2,
+          title: "Berry Harvester",
+          pay: "$10/hr",
+          location: "Farm B",
+          date: "Nov 21, 2025",
+        },
       ]);
     } finally {
       setLoading(false);
@@ -37,69 +56,186 @@ export default function JobsPage() {
     try {
       // In a real app, you would upload the audio blob to the server
       if (audioBlob) {
-        console.log('Audio blob size:', audioBlob.size);
+        console.log("Audio blob size:", audioBlob.size);
         // You could upload it here: await uploadAudio(jobId, audioBlob);
       }
 
       // Create contract via API
-      const response = await fetch('http://localhost:8000/contracts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:8000/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ job_id: jobId }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create contract');
+        throw new Error("Failed to create contract");
       }
 
       const newContract: Contract = await response.json();
-      
+
       // Also save to localStorage as backup
-      const existingContracts = localStorage.getItem('contracts');
+      const existingContracts = localStorage.getItem("contracts");
       const contracts: Contract[] = existingContracts
         ? JSON.parse(existingContracts)
         : [];
       contracts.push(newContract);
-      localStorage.setItem('contracts', JSON.stringify(contracts));
+      localStorage.setItem("contracts", JSON.stringify(contracts));
 
-      alert('Application submitted! The employer will review your application.');
+      alert(
+        "Application submitted! The employer will review your application."
+      );
     } catch (err) {
-      console.error('Error applying to job:', err);
-      alert('Error submitting application. Please try again.');
+      console.error("Error applying to job:", err);
+      alert("Error submitting application. Please try again.");
     }
   };
 
+  const filteredJobs = useMemo(() => {
+    if (filter === "all") return jobs;
+    return jobs.filter((job) => {
+      const cropType = ((job as any)?.crop_type || "").toLowerCase();
+      return cropType === filter;
+    });
+  }, [jobs, filter]);
+
+  const stats = useMemo(() => {
+    const workers = jobs.reduce(
+      (sum, job) => sum + (((job as any)?.workers_requested as number) || 0),
+      0
+    );
+    const audioFriendly = jobs.length;
+    const nextStart = jobs[0]?.date;
+    return { workers, audioFriendly, nextStart };
+  }, [jobs]);
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-primary text-white p-6 shadow-md">
-        <h1 className="text-2xl font-bold">Available Jobs</h1>
-        <p className="text-sm mt-1 opacity-90">Find work in San Quintín</p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white pb-28">
+      <header className="rounded-b-[2.5rem] bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 pt-12 pb-10 text-white shadow-lg">
+        <div className="mx-auto max-w-3xl space-y-4">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-emerald-100">
+              San Quintín Workforce
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold leading-tight">
+              Find work in San Quintín, Baja California, Mexico
+            </h1>
+            <p className="mt-2 text-emerald-50">
+              Jobs curated for low-text, icon-forward experiences built for
+              agricultural day laborers.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge className="bg-white/15 text-white" variant="outline">
+              <AudioLines className="mr-2 h-4 w-4" />
+              Voice-friendly
+            </Badge>
+          </div>
+        </div>
+      </header>
 
-      <div className="p-4">
+      <main className="mx-auto max-w-3xl space-y-6 px-4 pt-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <Card className="bg-white/80">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                Workers needed
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold">{stats.workers || "—"}</p>
+              <p className="text-xs text-muted-foreground">
+                across all postings
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="bg-white/80">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                Voice-ready listings
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold">{stats.audioFriendly}</p>
+              <p className="text-xs text-muted-foreground">
+                multi-lingual prompts
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="col-span-2 bg-white/80 sm:col-span-1">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                Next start date
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold">
+                {stats.nextStart ?? "Pending"}
+              </p>
+              <p className="text-xs text-muted-foreground">Updated hourly</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Tabs
+            value={filter}
+            onValueChange={setFilter}
+            className="w-full sm:w-auto"
+          >
+            <TabsList className="flex w-full flex-wrap gap-2 rounded-2xl bg-muted p-1 sm:w-auto">
+              <TabsTrigger value="all">All jobs</TabsTrigger>
+              <TabsTrigger value="tomato">Tomato</TabsTrigger>
+              <TabsTrigger value="strawberry">Strawberry</TabsTrigger>
+              <TabsTrigger value="other">Other</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto gap-2 text-sm text-muted-foreground"
+            onClick={fetchJobs}
+            disabled={loading}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
+
         {loading ? (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4">⏳</div>
-            <p className="text-gray-600">Loading jobs...</p>
-          </div>
+          <Card className="border-dashed border-muted">
+            <CardContent className="space-y-4 py-8 text-center text-muted-foreground">
+              <p className="font-medium">Loading curated shifts…</p>
+              <p className="text-sm">
+                Connecting to Supabase and the Poisson-powered generator.
+              </p>
+            </CardContent>
+          </Card>
         ) : error ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-            <p className="text-yellow-800 text-sm">{error}</p>
-          </div>
-        ) : null}
-
-        {jobs.length === 0 && !loading ? (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4">📭</div>
-            <p className="text-gray-600">No jobs available at this time</p>
-          </div>
+          <Card className="border-destructive/40 bg-red-50">
+            <CardContent className="space-y-2 py-6 text-sm text-destructive">
+              <p className="font-semibold">We couldn’t reach the job server.</p>
+              <p>{error}</p>
+            </CardContent>
+          </Card>
+        ) : filteredJobs.length === 0 ? (
+          <Card className="border-dashed text-center">
+            <CardContent className="py-12">
+              <p className="text-lg font-medium text-muted-foreground">
+                No jobs in this category yet.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Try another filter or check back later.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
-          jobs.map((job) => (
-            <JobCard key={job.id} job={job} onApply={handleApply} />
-          ))
+          <div className="space-y-4">
+            {filteredJobs.map((job) => (
+              <JobCard key={job.id} job={job} onApply={handleApply} />
+            ))}
+          </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
-

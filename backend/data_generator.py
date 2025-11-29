@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from db import supabase
 
 
 def generate_baja_harvest_data(num_jobs=100, arrival_rate_minutes=30):
@@ -72,16 +73,17 @@ def generate_baja_harvest_data(num_jobs=100, arrival_rate_minutes=30):
     return df
 
 
-def convert_to_job_format(df: pd.DataFrame, base_date: datetime = None) -> List[Dict[str, Any]]:
+def convert_to_supabase_format(df: pd.DataFrame, base_date: datetime = None, grower_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Convert the generated DataFrame to the format expected by the frontend.
+    Convert the generated DataFrame to Supabase jobs table format.
     
     Args:
         df: DataFrame from generate_baja_harvest_data
         base_date: Base date to calculate job dates from arrival times
+        grower_id: UUID of the grower posting these jobs (optional)
     
     Returns:
-        List of job dictionaries in frontend format
+        List of job dictionaries ready for Supabase insertion
     """
     if base_date is None:
         base_date = datetime.now()
@@ -101,13 +103,6 @@ def convert_to_job_format(df: pd.DataFrame, base_date: datetime = None) -> List[
         else:
             title = f"{crop} Harvester"
         
-        # Format pay rate
-        pay_rate = row['Pay_Rate_MXN']
-        if crop == 'Tomato':
-            pay_str = f"${pay_rate:.2f}/bucket"
-        else:
-            pay_str = f"${pay_rate:.2f}/flat"
-        
         # Select farm location
         farm_idx = int(row['Job_ID']) % len(farm_names)
         location = farm_names[farm_idx]
@@ -120,22 +115,71 @@ def convert_to_job_format(df: pd.DataFrame, base_date: datetime = None) -> List[
             f"Estimated duration: {int(row['Service_Time_Mins'])} minutes."
         )
         
-        jobs.append({
-            'id': int(row['Job_ID']),
+        job_data = {
+            'grower_id': grower_id,  # Can be None for generated jobs
             'title': title,
-            'pay': pay_str,
-            'location': location,
-            'date': job_date.strftime('%Y-%m-%d'),
-            'description': description,
-            # Additional metadata for backend use
             'crop_type': crop,
-            'quantity': int(row['Quantity_Units']),
+            'pay_rate_mxn': float(row['Pay_Rate_MXN']),
+            'quantity_units': int(row['Quantity_Units']),
+            'unit_type': row['Unit_Type'],
             'workers_requested': int(row['Workers_Requested']),
-            'pay_rate_mxn': float(pay_rate),
-            'total_value_mxn': float(row['Total_Job_Value_MXN']),
+            'start_date': job_date.strftime('%Y-%m-%d'),
+            'description': description,
+            'status': 'open',
             'service_time_mins': float(row['Service_Time_Mins']),
             'arrival_time_poisson': float(row['Arrival_Time_Poisson']),
-        })
+        }
+        
+        jobs.append(job_data)
     
     return jobs
 
+
+def insert_jobs_to_supabase(num_jobs: int = 50, arrival_rate_minutes: float = 30.0, grower_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Generate jobs using Poisson process and insert them into Supabase.
+    
+    Args:
+        num_jobs: Number of jobs to generate
+        arrival_rate_minutes: Average time between job arrivals
+        grower_id: Optional grower UUID
+    
+    Returns:
+        Dictionary with insertion results
+    """
+    # Generate data using Poisson process
+    df = generate_baja_harvest_data(num_jobs=num_jobs, arrival_rate_minutes=arrival_rate_minutes)
+    
+    # Convert to Supabase format
+    jobs = convert_to_supabase_format(df, base_date=datetime.now(), grower_id=grower_id)
+    
+    # Insert into Supabase (batch insert)
+    try:
+        response = supabase.table("jobs").insert(jobs).execute()
+        
+        # Also save forecast data
+        forecast_data = {
+            'num_jobs': num_jobs,
+            'arrival_rate_minutes': float(arrival_rate_minutes),
+            'forecast_json': jobs,  # Store the generated jobs
+            'summary_json': {
+                'avg_workers': float(df['Workers_Requested'].mean()),
+                'avg_service_time': float(df['Service_Time_Mins'].mean()),
+                'total_jobs': len(jobs),
+                'tomato_jobs': int((df['Crop_Type'] == 'Tomato').sum()),
+                'strawberry_jobs': int((df['Crop_Type'] == 'Strawberry').sum()),
+            }
+        }
+        supabase.table("demand_forecast").insert(forecast_data).execute()
+        
+        return {
+            'success': True,
+            'jobs_inserted': len(response.data),
+            'message': f'Successfully inserted {len(response.data)} jobs using Poisson process'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to insert jobs into Supabase'
+        }

@@ -1,5 +1,24 @@
-import { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { useState, useEffect } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+} from "recharts";
+import { Activity, Shield, Signal } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 interface Stats {
   active_jobs: number;
@@ -20,134 +39,185 @@ export default function AdminPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:8000/stats');
+      const response = await fetch("http://localhost:8000/stats");
       if (response.ok) {
         const data = await response.json();
         setStats(data);
       }
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error("Error fetching stats:", error);
     } finally {
       setLoading(false);
     }
   };
 
   // Fallback data if API fails
-  const jobStats = stats?.weekly_jobs.map((day, index) => ({
-    name: day.name,
-    jobs: day.jobs,
-    applications: stats.weekly_applications[index]?.applications || 0,
-  })) || [
-    { name: 'Mon', jobs: 0, applications: 0 },
-    { name: 'Tue', jobs: 0, applications: 0 },
-    { name: 'Wed', jobs: 0, applications: 0 },
-    { name: 'Thu', jobs: 0, applications: 0 },
-    { name: 'Fri', jobs: 0, applications: 0 },
-    { name: 'Sat', jobs: 0, applications: 0 },
-    { name: 'Sun', jobs: 0, applications: 0 },
-  ];
+  const jobStats =
+    stats?.weekly_jobs.map((day, index) => ({
+      name: day.name,
+      jobs: day.jobs,
+      applications: stats.weekly_applications[index]?.applications || 0,
+    })) || [
+      { name: "Mon", jobs: 0, applications: 0 },
+      { name: "Tue", jobs: 0, applications: 0 },
+      { name: "Wed", jobs: 0, applications: 0 },
+      { name: "Thu", jobs: 0, applications: 0 },
+      { name: "Fri", jobs: 0, applications: 0 },
+      { name: "Sat", jobs: 0, applications: 0 },
+      { name: "Sun", jobs: 0, applications: 0 },
+    ];
 
   const laborDemand = stats?.labor_demand_forecast || [
-    { month: 'Jan', demand: 0 },
-    { month: 'Feb', demand: 0 },
-    { month: 'Mar', demand: 0 },
-    { month: 'Apr', demand: 0 },
-    { month: 'May', demand: 0 },
-    { month: 'Jun', demand: 0 },
+    { month: "Jan", demand: 0 },
+    { month: "Feb", demand: 0 },
+    { month: "Mar", demand: 0 },
+    { month: "Apr", demand: 0 },
+    { month: "May", demand: 0 },
+    { month: "Jun", demand: 0 },
   ];
 
   const categoryStats = stats?.category_stats || [
-    { category: 'Tomato', jobs: 0, workers: 0 },
-    { category: 'Strawberry', jobs: 0, workers: 0 },
+    { category: "Tomato", jobs: 0, workers: 0 },
+    { category: "Strawberry", jobs: 0, workers: 0 },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-primary text-white p-6 shadow-md">
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <p className="text-sm mt-1 opacity-90">Statistics and forecasts</p>
-      </div>
-
-      <div className="p-4 space-y-6">
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4">⏳</div>
-            <p className="text-gray-600">Loading statistics...</p>
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 pb-24 text-white">
+      <header className="px-6 pt-12 pb-10">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.5em] text-slate-400">
+              Impact control room
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold">
+              Real-time labor intelligence
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-200">
+              Powered by Supabase + Poisson simulations to predict demand and document ethical hiring.
+            </p>
           </div>
+          <Badge className="bg-white/10 text-white" variant="outline">
+            <Shield className="mr-2 h-4 w-4" />
+            Audit ready
+          </Badge>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-5xl space-y-6 px-4">
+        {loading ? (
+          <Card className="border border-white/10 bg-white/5 text-center text-white">
+            <CardContent className="py-12">
+              <p className="text-lg font-medium">Syncing telemetry…</p>
+              <p className="text-sm text-white/70">
+                Fetching metrics from Supabase and local Poisson runs.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
           <>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-lg shadow-md p-4 text-center">
-                <div className="text-3xl mb-2">📊</div>
-                <div className="text-2xl font-bold text-gray-800">
-                  {stats?.active_jobs || 0}
-                </div>
-                <div className="text-sm text-gray-600">Active Jobs</div>
-              </div>
-              <div className="bg-white rounded-lg shadow-md p-4 text-center">
-                <div className="text-3xl mb-2">👥</div>
-                <div className="text-2xl font-bold text-gray-800">
-                  {stats?.total_applications || 0}
-                </div>
-                <div className="text-sm text-gray-600">Applications</div>
-              </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Card className="bg-white/10 text-white">
+                <CardContent className="flex items-center justify-between py-6">
+                  <div>
+                    <p className="text-sm text-white/70">Active jobs</p>
+                    <p className="text-3xl font-semibold">{stats?.active_jobs || 0}</p>
+                  </div>
+                  <Activity className="h-10 w-10 text-emerald-300" />
+                </CardContent>
+              </Card>
+              <Card className="bg-white/10 text-white">
+                <CardContent className="flex items-center justify-between py-6">
+                  <div>
+                    <p className="text-sm text-white/70">Applications</p>
+                    <p className="text-3xl font-semibold">
+                      {stats?.total_applications || 0}
+                    </p>
+                  </div>
+                  <Signal className="h-10 w-10 text-emerald-300" />
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Weekly Job Stats */}
-            <div className="bg-white rounded-lg shadow-md p-4">
-              <h2 className="text-lg font-semibold mb-4">Jobs and Applications (This Week)</h2>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={jobStats}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="jobs" fill="#22c55e" name="Jobs" />
-                  <Bar dataKey="applications" fill="#3b82f6" name="Applications" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <Card className="border-0 bg-white">
+              <CardHeader>
+                <CardTitle>Jobs & applications (7 days)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={jobStats}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="jobs" fill="#22c55e" name="Jobs" radius={[6, 6, 0, 0]} />
+                    <Bar
+                      dataKey="applications"
+                      fill="#2563eb"
+                      name="Applications"
+                      radius={[6, 6, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
 
-            {/* Labor Demand Forecast */}
-            <div className="bg-white rounded-lg shadow-md p-4">
-              <h2 className="text-lg font-semibold mb-4">Labor Demand Forecast</h2>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={laborDemand}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="demand" stroke="#22c55e" strokeWidth={2} name="Demand" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card className="border-0 bg-white">
+                <CardHeader>
+                  <CardTitle>Labor demand forecast</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Generated from Poisson arrival runs
+                  </p>
+                </CardHeader>
+                <CardContent className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={laborDemand}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="demand"
+                        stroke="#22c55e"
+                        strokeWidth={2}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
 
-            {/* Category Breakdown */}
-            <div className="bg-white rounded-lg shadow-md p-4">
-              <h2 className="text-lg font-semibold mb-4">Jobs by Category</h2>
-              <div className="space-y-3">
-                {categoryStats.map((stat) => (
-                  <div key={stat.category} className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium">{stat.category}</span>
-                        <span className="text-sm text-gray-600">{stat.jobs} jobs</span>
+              <Card className="border-0 bg-white">
+                <CardHeader>
+                  <CardTitle>Crop category mix</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Worker allocation by crop
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {categoryStats.map((stat) => (
+                    <div key={stat.category}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-foreground">{stat.category}</span>
+                        <span className="text-muted-foreground">{stat.jobs} jobs</span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="mt-2 h-2 w-full rounded-full bg-muted">
                         <div
-                          className="bg-primary h-2 rounded-full"
-                          style={{ width: `${(stat.jobs / 50) * 100}%` }}
+                          className="h-2 rounded-full bg-primary"
+                          style={{ width: `${Math.min((stat.jobs / 50) * 100, 100)}%` }}
                         />
                       </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {stat.workers} workers requested
+                      </p>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </CardContent>
+              </Card>
             </div>
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 }

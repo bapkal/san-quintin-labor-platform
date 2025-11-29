@@ -4,4 +4,6 @@ pydantic==2.9.2
 numpy==2.1.1
 pandas==2.2.3
 python-multipart==0.0.12
+supabase==2.8.0
+python-dotenv==1.0.1
 
