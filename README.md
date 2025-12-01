@@ -49,7 +49,17 @@ The API will be available at `http://localhost:8000`
 npm install
 ```
 
-2. Run the development server:
+2. Set up environment variables:
+   - Create a `.env` file in the root directory (same level as `package.json`)
+   - Add your Supabase credentials:
+```env
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+```
+   - **Note**: These are the same values from `backend/.env` but with `VITE_` prefix so Vite can expose them to the frontend
+   - You can copy the values from `backend/.env` and add the `VITE_` prefix
+
+3. Run the development server:
 ```bash
 npm run dev
 ```
@@ -58,11 +68,13 @@ The frontend will be available at `http://localhost:5173`
 
 ## Features
 
+- **Authentication**: Secure login and signup using Supabase Auth
 - **Job Discovery**: Browse available agricultural jobs with icon-based navigation
 - **Voice Applications**: Apply to jobs using voice recordings (low-literacy support)
-- **Digital Contracts**: Track job applications and contract status
+- **Digital Contracts**: Track job applications and contract status (protected routes)
 - **Admin Dashboard**: View statistics, labor demand forecasts, and job analytics
 - **Poisson Process Modeling**: Realistic job arrival simulation for research
+- **Protected Routes**: Contracts, Dashboard, and Admin pages require authentication
 
 ## API Endpoints
 

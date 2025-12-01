@@ -18,7 +18,8 @@ export default function DashboardPage() {
     description?: string;
   }) => {
     try {
-      const response = await fetch("http://localhost:8000/jobs", {
+      const { authenticatedFetch } = await import("../lib/api");
+      const response = await authenticatedFetch("http://localhost:8000/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(jobData),

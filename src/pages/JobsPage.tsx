@@ -60,8 +60,9 @@ export default function JobsPage() {
         // You could upload it here: await uploadAudio(jobId, audioBlob);
       }
 
-      // Create contract via API
-      const response = await fetch("http://localhost:8000/contracts", {
+      // Create contract via API with authentication
+      const { authenticatedFetch } = await import("../lib/api");
+      const response = await authenticatedFetch("http://localhost:8000/contracts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ job_id: jobId }),

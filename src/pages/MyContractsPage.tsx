@@ -20,7 +20,8 @@ export default function MyContractsPage() {
 
   const fetchContracts = async () => {
     try {
-      const response = await fetch("http://localhost:8000/contracts");
+      const { authenticatedFetch } = await import("../lib/api");
+      const response = await authenticatedFetch("http://localhost:8000/contracts");
       if (response.ok) {
         const data = await response.json();
         const normalized = data.map((contract: any) => ({

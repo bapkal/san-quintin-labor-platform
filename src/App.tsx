@@ -1,24 +1,71 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
 import Navbar from "./components/Navbar";
+import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import JobsPage from "./pages/JobsPage";
 import MyContractsPage from "./pages/MyContractsPage";
 import DashboardPage from "./pages/DashboardPage";
 import AdminPage from "./pages/AdminPage";
+import LoginPage from "./pages/LoginPage";
+import SignUpPage from "./pages/SignUpPage";
 
 function App() {
   return (
-    <Router>
-      <div className="min-h-screen bg-background text-foreground">
-        <Routes>
-          <Route path="/" element={<JobsPage />} />
-          <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/my-contracts" element={<MyContractsPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-        </Routes>
-        <Navbar />
-      </div>
-    </Router>
+    <AuthProvider>
+      <Router>
+        <div className="min-h-screen bg-background text-foreground">
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignUpPage />} />
+            {/* Jobs page - accessible to workers and admins */}
+            <Route
+              path="/"
+              element={
+                <RoleProtectedRoute allowedRoles={['worker', 'admin']}>
+                  <JobsPage />
+                </RoleProtectedRoute>
+              }
+            />
+            <Route
+              path="/jobs"
+              element={
+                <RoleProtectedRoute allowedRoles={['worker', 'admin']}>
+                  <JobsPage />
+                </RoleProtectedRoute>
+              }
+            />
+            {/* Contracts page - accessible to workers and admins */}
+            <Route
+              path="/my-contracts"
+              element={
+                <RoleProtectedRoute allowedRoles={['worker', 'admin']}>
+                  <MyContractsPage />
+                </RoleProtectedRoute>
+              }
+            />
+            {/* Dashboard (Post Job) - accessible to growers and admins */}
+            <Route
+              path="/dashboard"
+              element={
+                <RoleProtectedRoute allowedRoles={['grower', 'admin']}>
+                  <DashboardPage />
+                </RoleProtectedRoute>
+              }
+            />
+            {/* Admin page - only accessible to admins */}
+            <Route
+              path="/admin"
+              element={
+                <RoleProtectedRoute allowedRoles={['admin']}>
+                  <AdminPage />
+                </RoleProtectedRoute>
+              }
+            />
+          </Routes>
+          <Navbar />
+        </div>
+      </Router>
+    </AuthProvider>
   );
 }
 
