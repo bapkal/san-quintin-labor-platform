@@ -7,8 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getApiUrl } from "../lib/config";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function JobsPage() {
+  const { user } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,51 +24,72 @@ export default function JobsPage() {
   const fetchJobs = async () => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:8000/jobs");
+      setError(null);
+      const response = await fetch(getApiUrl("jobs"));
       if (!response.ok) {
         throw new Error("Error loading jobs");
       }
       const data = await response.json();
-      setJobs(data);
+      setJobs(data || []);
     } catch (err) {
-      setError("Could not load jobs. Please verify the server is running.");
+      const errorMessage = err instanceof Error ? err.message : "Could not load jobs. Please verify the server is running.";
+      setError(errorMessage);
       console.error("Error fetching jobs:", err);
-      // Fallback to sample data
-      setJobs([
-        {
-          id: 1,
-          title: "Tomato Picker",
-          pay: "$12/hr",
-          location: "Farm A",
-          date: "Nov 20, 2025",
-        },
-        {
-          id: 2,
-          title: "Berry Harvester",
-          pay: "$10/hr",
-          location: "Farm B",
-          date: "Nov 21, 2025",
-        },
-      ]);
+      // Fallback to sample data only if we have no jobs
+      if (jobs.length === 0) {
+        setJobs([
+          {
+            id: 1,
+            title: "Tomato Picker",
+            pay: "$12/hr",
+            location: "Farm A",
+            date: "Nov 20, 2025",
+          },
+          {
+            id: 2,
+            title: "Berry Harvester",
+            pay: "$10/hr",
+            location: "Farm B",
+            date: "Nov 21, 2025",
+          },
+        ]);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApply = async (jobId: number, audioBlob?: Blob) => {
+  const handleApply = async (jobId: number, audioBlob?: Blob, notes?: string) => {
     try {
-      // In a real app, you would upload the audio blob to the server
+      // Get current user ID for the application
+      const workerId = user?.id || undefined;
+
+      let audioUrl: string | undefined = undefined;
+
+      // Upload audio file if provided
       if (audioBlob) {
-        console.log("Audio blob size:", audioBlob.size);
-        // You could upload it here: await uploadAudio(jobId, audioBlob);
+        try {
+          const { uploadAudioFile } = await import("../lib/storage");
+          audioUrl = await uploadAudioFile(audioBlob, `job-${jobId}-application`);
+          console.log("Audio uploaded successfully:", audioUrl);
+        } catch (uploadError) {
+          console.error("Error uploading audio:", uploadError);
+          alert("Error uploading voice recording. Please try again or use Quick Apply.");
+          return;
+        }
       }
 
       // Create contract via API with authentication
       const { authenticatedFetch } = await import("../lib/api");
-      const response = await authenticatedFetch("http://localhost:8000/contracts", {
+      const response = await authenticatedFetch(getApiUrl("contracts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job_id: jobId }),
+        body: JSON.stringify({ 
+          job_id: jobId,
+          worker_id: workerId,
+          audio_url: audioUrl,
+          notes: notes,
+        }),
       });
 
       if (!response.ok) {

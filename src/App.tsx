@@ -1,20 +1,23 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Navbar from "./components/Navbar";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 import JobsPage from "./pages/JobsPage";
 import MyContractsPage from "./pages/MyContractsPage";
 import DashboardPage from "./pages/DashboardPage";
 import AdminPage from "./pages/AdminPage";
+import ApplicationsPage from "./pages/ApplicationsPage";
 import LoginPage from "./pages/LoginPage";
 import SignUpPage from "./pages/SignUpPage";
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="min-h-screen bg-background text-foreground">
-          <Routes>
+    <ErrorBoundary>
+      <AuthProvider>
+        <Router>
+          <div className="min-h-screen bg-background text-foreground">
+            <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
             {/* Jobs page - accessible to workers and admins */}
@@ -52,6 +55,15 @@ function App() {
                 </RoleProtectedRoute>
               }
             />
+            {/* Applications page - accessible to growers and admins */}
+            <Route
+              path="/applications"
+              element={
+                <RoleProtectedRoute allowedRoles={['grower', 'admin']}>
+                  <ApplicationsPage />
+                </RoleProtectedRoute>
+              }
+            />
             {/* Admin page - only accessible to admins */}
             <Route
               path="/admin"
@@ -61,11 +73,12 @@ function App() {
                 </RoleProtectedRoute>
               }
             />
-          </Routes>
-          <Navbar />
-        </div>
-      </Router>
-    </AuthProvider>
+            </Routes>
+            <Navbar />
+          </div>
+        </Router>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

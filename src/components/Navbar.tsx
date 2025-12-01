@@ -6,6 +6,7 @@ import {
   LineChart,
   LogOut,
   User,
+  ClipboardList,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "./ui/button";
@@ -30,13 +31,19 @@ export default function Navbar() {
     { path: "/jobs", icon: Briefcase, label: "Jobs", roles: ['worker', 'admin'] as const },
     { path: "/my-contracts", icon: FileText, label: "Contracts", roles: ['worker', 'admin'] as const },
     { path: "/dashboard", icon: LayoutDashboard, label: "Post Job", roles: ['grower', 'admin'] as const },
+    { path: "/applications", icon: ClipboardList, label: "Applications", roles: ['grower', 'admin'] as const },
     { path: "/admin", icon: LineChart, label: "Admin", roles: ['admin'] as const },
   ];
 
   // Filter nav items based on user role
   const visibleNavItems = allNavItems.filter((item) => {
-    if (!user || !userRole) return false;
-    return item.roles.includes(userRole);
+    try {
+      if (!user || !userRole) return false;
+      return item.roles.includes(userRole);
+    } catch (error) {
+      console.error('Error filtering nav items:', error);
+      return false;
+    }
   });
 
   const totalItems = visibleNavItems.length + (user ? 1 : 0);

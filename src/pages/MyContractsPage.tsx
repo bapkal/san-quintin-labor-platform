@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getApiUrl } from "../lib/config";
 
 export default function MyContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -21,7 +22,7 @@ export default function MyContractsPage() {
   const fetchContracts = async () => {
     try {
       const { authenticatedFetch } = await import("../lib/api");
-      const response = await authenticatedFetch("http://localhost:8000/contracts");
+      const response = await authenticatedFetch(getApiUrl("contracts"));
       if (response.ok) {
         const data = await response.json();
         const normalized = data.map((contract: any) => ({

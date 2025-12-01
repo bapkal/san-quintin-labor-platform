@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getApiUrl } from "../lib/config";
 
 interface Stats {
   active_jobs: number;
@@ -39,7 +40,7 @@ export default function AdminPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch("http://localhost:8000/stats");
+      const response = await fetch(getApiUrl("stats"));
       if (response.ok) {
         const data = await response.json();
         setStats(data);

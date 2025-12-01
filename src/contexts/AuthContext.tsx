@@ -44,12 +44,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      // First try to get from database
-      const { data, error } = await supabase
+      // First try to get from database with timeout
+      const rolePromise = supabase
         .from('users')
         .select('role')
         .eq('id', userObj.id)
         .single();
+      
+      const timeoutPromise = new Promise<{ data: null; error: { message: 'timeout' } }>((resolve) => {
+        setTimeout(() => resolve({ data: null, error: { message: 'timeout' } }), 3000);
+      });
+      
+      const { data, error } = await Promise.race([rolePromise, timeoutPromise]) as any;
       
       if (!error && data?.role) {
         return (data.role as UserRole);
@@ -58,18 +64,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // If not in database, try to get from user metadata as fallback
       const metadataRole = userObj.user_metadata?.role;
       if (metadataRole && ['worker', 'grower', 'admin'].includes(metadataRole)) {
-        // If we have metadata but not in DB, try to create the record
-        try {
-          await supabase.from('users').insert({
-            id: userObj.id,
-            name: userObj.user_metadata?.name || userObj.email?.split('@')[0] || 'User',
-            phone: userObj.user_metadata?.phone || 'N/A',
-            role: metadataRole,
-          });
-        } catch (insertErr) {
+        // If we have metadata but not in DB, try to create the record (non-blocking)
+        supabase.from('users').insert({
+          id: userObj.id,
+          name: userObj.user_metadata?.name || userObj.email?.split('@')[0] || 'User',
+          phone: userObj.user_metadata?.phone || 'N/A',
+          role: metadataRole,
+        }).then(() => {
+          // Success, but don't wait for it
+        }).catch((insertErr) => {
           // Ignore insert errors - might already exist or other issue
           console.log('Could not sync user to database:', insertErr);
-        }
+        });
         return metadataRole as UserRole;
       }
       
