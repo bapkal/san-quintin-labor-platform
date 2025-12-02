@@ -1,11 +1,18 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request, Response, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from datetime import datetime, timedelta
 from typing import List, Optional
+try:
+    import jwt
+except ImportError:
+    # Fallback if PyJWT not installed
+    jwt = None
 
 from models import Job, JobCreate, JobResponse, Contract, ContractCreate, ContractUpdate, StatsResponse, ApplicationResponse, ApplicationStatusUpdate
 from db import supabase
 from data_generator import insert_jobs_to_supabase
+from contract_pdf import generate_contract_pdf
 
 app = FastAPI(title="Mexico Labor Project API", version="1.0.0")
 
@@ -187,16 +194,55 @@ async def delete_job(job_id: int):
     return {"message": "Job deleted successfully"}
 
 
+def get_user_id_from_token(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    """Extract user ID from JWT token in Authorization header."""
+    if not authorization or not jwt:
+        return None
+    
+    try:
+        # Remove "Bearer " prefix if present
+        token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+        
+        # Decode JWT token (without verification for now - Supabase handles this)
+        # We'll just extract the user ID from the token
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        return decoded.get('sub')  # 'sub' is the user ID in Supabase JWT tokens
+    except Exception as e:
+        print(f"Error decoding token: {e}")
+        return None
+
+
 @app.get("/contracts", response_model=List[Contract])
-async def get_contracts(worker_id: Optional[str] = None, status: Optional[str] = None):
-    """Get all contracts, optionally filtered by worker_id or status."""
+async def get_contracts(
+    worker_id: Optional[str] = None, 
+    status: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get contracts. 
+    - If worker_id is provided, filter by that worker
+    - If authorization token is provided, automatically filter by that worker
+    - Only returns contracts with status 'accepted' or 'signed' by default
+    """
+    # Try to get worker_id from token if not provided
+    if not worker_id and authorization:
+        worker_id = get_user_id_from_token(authorization)
+    
     query = supabase.table("contracts").select("*, jobs(*), workers(*)")
     
+    # Always filter by worker_id if available (for security - workers only see their own contracts)
     if worker_id:
         query = query.eq("worker_id", worker_id)
     
+    # Default to showing only signed/completed contracts (accepted jobs)
     if status:
         query = query.eq("status", status)
+    else:
+        # If no status filter, show signed and completed contracts (accepted jobs)
+        query = query.in_("status", ["signed", "completed"])
+    
+    # Order by created_at descending (newest first)
+    query = query.order("created_at", desc=True)
     
     response = query.execute()
     
@@ -213,6 +259,7 @@ async def get_contracts(worker_id: Optional[str] = None, status: Optional[str] =
             'status': contract['status'],
             'worker_id': contract['worker_id'],
             'created_at': contract.get('created_at', ''),
+            'contract_pdf_url': contract.get('contract_pdf_url'),  # Include PDF URL if available
         })
     
     return contracts
@@ -348,14 +395,85 @@ async def create_contract(contract: ContractCreate):
 @app.patch("/contracts/{contract_id}", response_model=Contract)
 async def update_contract(contract_id: int, update: ContractUpdate):
     """Update contract status (accept/reject)."""
-    if update.status not in ['accepted', 'rejected', 'pending', 'signed', 'completed']:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    # Contracts table only allows: 'pending', 'signed', 'completed'
+    # Map 'accepted' to 'signed' for contracts
+    mapped_status = 'signed' if update.status == 'accepted' else update.status
+    if mapped_status not in ['pending', 'signed', 'completed']:
+        raise HTTPException(status_code=400, detail="Invalid status. Must be 'pending', 'signed', or 'completed'")
+    
+    # Get contract first
+    contract_check = supabase.table("contracts").select("*").eq("id", contract_id).execute()
+    if not contract_check.data:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    existing_contract = contract_check.data[0]
+    
+    # If signing, generate PDF
+    update_data = {
+        'status': mapped_status,
+        'signed_at': datetime.now().isoformat() if mapped_status == 'signed' else existing_contract.get('signed_at')
+    }
+    
+    if mapped_status == 'signed' and not existing_contract.get('contract_pdf_url'):
+        # Generate PDF contract
+        try:
+            # Get job details
+            job_response = supabase.table("jobs").select("*, growers(*)").eq("id", existing_contract['job_id']).execute()
+            job = job_response.data[0] if job_response.data else {}
+            grower = job.get('growers', {}) if isinstance(job.get('growers'), dict) else {}
+            
+            # Get worker details
+            worker_id = existing_contract.get('worker_id')
+            worker_data = {'user_id': worker_id, 'name': 'Worker', 'phone': 'N/A'}
+            if worker_id:
+                try:
+                    user_response = supabase.table("users").select("*").eq("id", worker_id).execute()
+                    if user_response.data:
+                        user = user_response.data[0]
+                        worker_data = {
+                            'user_id': worker_id,
+                            'name': user.get('name', 'Worker'),
+                            'phone': user.get('phone', 'N/A')
+                        }
+                except:
+                    pass
+            
+            # Generate PDF
+            pdf_buffer = generate_contract_pdf(
+                contract_data=existing_contract,
+                job_data=job,
+                worker_data=worker_data,
+                grower_data=grower if grower else None
+            )
+            
+            # Upload PDF to Supabase storage (if bucket exists)
+            pdf_filename = f"contract_{contract_id}_{datetime.now().strftime('%Y%m%d')}.pdf"
+            pdf_path = f"{worker_id}/{pdf_filename}"
+            
+            pdf_url = None
+            try:
+                # Try to upload to voice-applications bucket
+                pdf_upload = supabase.storage.from_("voice-applications").upload(
+                    pdf_path,
+                    pdf_buffer.getvalue(),
+                    file_options={"content-type": "application/pdf", "upsert": "true"}
+                )
+                
+                # Get public URL
+                pdf_url_data = supabase.storage.from_("voice-applications").get_public_url(pdf_path)
+                pdf_url = pdf_url_data.publicUrl if hasattr(pdf_url_data, 'publicUrl') else str(pdf_url_data)
+                
+                if pdf_url:
+                    update_data['contract_pdf_url'] = pdf_url
+            except Exception as storage_error:
+                print(f"Warning: Could not upload PDF to storage: {storage_error}")
+                # Continue without storing PDF URL - PDF can still be generated on-demand
+        except Exception as e:
+            print(f"Error generating PDF: {e}")
+            # Continue without PDF if generation fails
     
     # Update contract
-    response = supabase.table("contracts").update({
-        'status': update.status,
-        'signed_at': datetime.now().isoformat() if update.status == 'signed' else None
-    }).eq("id", contract_id).execute()
+    response = supabase.table("contracts").update(update_data).eq("id", contract_id).execute()
     
     if not response.data:
         raise HTTPException(status_code=404, detail="Contract not found")
@@ -483,12 +601,151 @@ async def update_application_status(
     # Also update the associated contract if it exists
     contract_response = supabase.table("contracts").select("*").eq("application_id", application_id).execute()
     if contract_response.data:
-        contract_status = 'accepted' if update.status == 'accepted' else 'pending'
-        supabase.table("contracts").update({
-            'status': contract_status
-        }).eq("application_id", application_id).execute()
+        contract = contract_response.data[0]
+        # Contracts table only allows: 'pending', 'signed', 'completed'
+        # So we use 'signed' when application is accepted
+        contract_status = 'signed' if update.status == 'accepted' else 'pending'
+        
+        # If accepting, generate PDF and update contract
+        if update.status == 'accepted':
+            # Generate PDF contract
+            try:
+                # Get job details
+                job_response = supabase.table("jobs").select("*, growers(*)").eq("id", contract['job_id']).execute()
+                job = job_response.data[0] if job_response.data else {}
+                grower = job.get('growers', {}) if isinstance(job.get('growers'), dict) else {}
+                
+                # Get worker details
+                worker_id = contract.get('worker_id')
+                worker_data = {'user_id': worker_id, 'name': 'Worker', 'phone': 'N/A'}
+                if worker_id:
+                    try:
+                        user_response = supabase.table("users").select("*").eq("id", worker_id).execute()
+                        if user_response.data:
+                            user = user_response.data[0]
+                            worker_data = {
+                                'user_id': worker_id,
+                                'name': user.get('name', 'Worker'),
+                                'phone': user.get('phone', 'N/A')
+                            }
+                    except:
+                        pass
+                
+                # Generate PDF
+                pdf_buffer = generate_contract_pdf(
+                    contract_data=contract,
+                    job_data=job,
+                    worker_data=worker_data,
+                    grower_data=grower if grower else None
+                )
+                
+                # Upload PDF to Supabase storage (if bucket exists)
+                pdf_filename = f"contract_{contract['id']}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                pdf_path = f"{worker_id}/{pdf_filename}"
+                
+                pdf_url = None
+                try:
+                    # Try to upload to voice-applications bucket (or create contracts bucket)
+                    pdf_upload = supabase.storage.from_("voice-applications").upload(
+                        pdf_path,
+                        pdf_buffer.getvalue(),
+                        file_options={"content-type": "application/pdf", "upsert": "true"}
+                    )
+                    
+                    # Get public URL
+                    pdf_url_data = supabase.storage.from_("voice-applications").get_public_url(pdf_path)
+                    pdf_url = pdf_url_data.publicUrl if hasattr(pdf_url_data, 'publicUrl') else str(pdf_url_data)
+                except Exception as storage_error:
+                    print(f"Warning: Could not upload PDF to storage: {storage_error}")
+                    # Continue without storing PDF URL - PDF can still be generated on-demand
+                
+                # Update contract with PDF URL and status
+                supabase.table("contracts").update({
+                    'status': contract_status,
+                    'contract_pdf_url': pdf_url,
+                    'signed_at': datetime.now().isoformat()
+                }).eq("id", contract['id']).execute()
+            except Exception as e:
+                print(f"Error generating PDF: {e}")
+                # Still update status even if PDF generation fails
+                supabase.table("contracts").update({
+                    'status': contract_status
+                }).eq("id", contract['id']).execute()
+        else:
+            # Just update status for rejected/pending
+            supabase.table("contracts").update({
+                'status': contract_status
+            }).eq("application_id", application_id).execute()
     
     return {"message": f"Application {application_id} status updated to {update.status}"}
+
+
+@app.get("/contracts/{contract_id}/pdf")
+async def download_contract_pdf(
+    contract_id: int,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Generate and download PDF contract for a specific contract.
+    Only the worker who owns the contract can download it.
+    """
+    # Get contract
+    contract_response = supabase.table("contracts").select("*, jobs(*), workers(*)").eq("id", contract_id).execute()
+    
+    if not contract_response.data:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    contract = contract_response.data[0]
+    
+    # Verify worker owns this contract (if token provided)
+    if authorization:
+        worker_id = get_user_id_from_token(authorization)
+        if worker_id and contract.get('worker_id') != worker_id:
+            raise HTTPException(status_code=403, detail="You don't have permission to access this contract")
+    
+    # Get job details
+    job = contract.get('jobs', {})
+    if not job:
+        job_response = supabase.table("jobs").select("*, growers(*)").eq("id", contract['job_id']).execute()
+        job = job_response.data[0] if job_response.data else {}
+    
+    grower = job.get('growers', {}) if isinstance(job.get('growers'), dict) else {}
+    
+    # Get worker details
+    worker_id = contract.get('worker_id')
+    worker_data = {'user_id': worker_id, 'name': 'Worker', 'phone': 'N/A'}
+    if worker_id:
+        try:
+            user_response = supabase.table("users").select("*").eq("id", worker_id).execute()
+            if user_response.data:
+                user = user_response.data[0]
+                worker_data = {
+                    'user_id': worker_id,
+                    'name': user.get('name', 'Worker'),
+                    'phone': user.get('phone', 'N/A')
+                }
+        except:
+            pass
+    
+    # Generate PDF
+    try:
+        pdf_buffer = generate_contract_pdf(
+            contract_data=contract,
+            job_data=job,
+            worker_data=worker_data,
+            grower_data=grower if grower else None
+        )
+        
+        # Return PDF as download
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=contract_{contract_id}.pdf"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating PDF: {str(e)}")
 
 
 @app.get("/stats", response_model=StatsResponse)

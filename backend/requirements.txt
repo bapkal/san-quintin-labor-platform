@@ -6,4 +6,6 @@ pandas==2.2.3
 python-multipart==0.0.12
 supabase==2.8.0
 python-dotenv==1.0.1
+reportlab==4.0.7
+PyJWT==2.8.0
 

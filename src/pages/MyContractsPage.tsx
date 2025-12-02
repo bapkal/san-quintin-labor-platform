@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileCheck2, MapPin, Wallet } from "lucide-react";
+import { FileCheck2, MapPin, Wallet, Download, FileText } from "lucide-react";
 
 import type { Contract } from "../types";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { API_URL } from "../lib/apiConfig";
+import { authenticatedFetch } from "../lib/api";
 
 export default function MyContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -36,6 +38,7 @@ export default function MyContractsPage() {
               status: contract.status ?? "pending",
               workerId: contract.worker_id,
               createdAt: contract.created_at,
+              contractPdfUrl: contract.contract_pdf_url,
             };
           } catch (err) {
             console.warn("Error normalizing contract:", err);
@@ -79,8 +82,8 @@ export default function MyContractsPage() {
 
   const getStatusColor = (status: Contract["status"]) => {
     switch (status) {
-      case "accepted":
       case "signed":
+      case "completed":
         return "bg-primary/15 text-primary border-primary/30";
       case "rejected":
         return "bg-red-100 text-red-700 border-red-200";
@@ -91,13 +94,37 @@ export default function MyContractsPage() {
 
   const getStatusText = (status: Contract["status"]) => {
     switch (status) {
-      case "accepted":
       case "signed":
         return "Accepted";
+      case "completed":
+        return "Completed";
       case "rejected":
         return "Rejected";
       default:
         return "Pending";
+    }
+  };
+
+  const handleDownloadPDF = async (contractId: number) => {
+    try {
+      const response = await authenticatedFetch(`${API_URL}/contracts/${contractId}/pdf`);
+      if (!response.ok) {
+        throw new Error("Failed to download PDF");
+      }
+      
+      // Get the blob and create download link
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contract_${contractId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Error downloading PDF:", error);
+      alert("Failed to download contract PDF. Please try again.");
     }
   };
 
@@ -158,6 +185,23 @@ export default function MyContractsPage() {
                     <MapPin className="h-4 w-4 text-primary" />
                     <span>{contract.location}</span>
                   </div>
+                  
+                  {/* Show download button for signed contracts (accepted jobs) */}
+                  {(contract.status === 'signed' || contract.status === 'completed') && (
+                    <div className="mt-4 pt-3 border-t border-border/50">
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => handleDownloadPDF(contract.id)}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download Contract PDF
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2 text-center">
+                        Official contract document for government benefits
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
