@@ -183,7 +183,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
-        setUserRole(null);
+        if (mounted) {
+          setUserRole(null);
+        }
       }
       
       if (mounted) {
@@ -299,7 +301,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    // Return a safe default instead of throwing to prevent white screen
+    console.error('useAuth must be used within an AuthProvider');
+    return {
+      user: null,
+      session: null,
+      userRole: null,
+      loading: false,
+      signUp: async () => ({ error: { message: 'Auth not initialized' } as AuthError }),
+      signIn: async () => ({ error: { message: 'Auth not initialized' } as AuthError }),
+      signOut: async () => {},
+    };
   }
   return context;
 }

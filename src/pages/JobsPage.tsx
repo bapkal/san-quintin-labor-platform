@@ -7,16 +7,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function JobsPage() {
+  let authContext;
+  try {
+    authContext = useAuth();
+  } catch (error) {
+    console.error('Error getting auth context in JobsPage:', error);
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md text-center space-y-4">
+          <div className="text-red-600 text-lg font-semibold">⚠️ Authentication Error</div>
+          <p className="text-muted-foreground">
+            There was an issue loading your authentication. Please refresh the page.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  const { user } = authContext;
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
-
-  useEffect(() => {
-    fetchJobs();
-  }, []);
+  const mountedRef = useRef(true);
 
   const fetchJobs = async () => {
     try {
@@ -26,87 +42,187 @@ export default function JobsPage() {
         throw new Error("Error loading jobs");
       }
       const data = await response.json();
-      setJobs(data);
+      if (mountedRef.current) {
+        setJobs(data);
+      }
     } catch (err) {
-      setError("Could not load jobs. Please verify the server is running.");
-      console.error("Error fetching jobs:", err);
-      // Fallback to sample data
-      setJobs([
-        {
-          id: 1,
-          title: "Tomato Picker",
-          pay: "$12/hr",
-          location: "Farm A",
-          date: "Nov 20, 2025",
-        },
-        {
-          id: 2,
-          title: "Berry Harvester",
-          pay: "$10/hr",
-          location: "Farm B",
-          date: "Nov 21, 2025",
-        },
-      ]);
+      if (mountedRef.current) {
+        setError("Could not load jobs. Please verify the server is running.");
+        console.error("Error fetching jobs:", err);
+        // Fallback to sample data
+        setJobs([
+          {
+            id: 1,
+            title: "Tomato Picker",
+            pay: "$12/hr",
+            location: "Farm A",
+            date: "Nov 20, 2025",
+          },
+          {
+            id: 2,
+            title: "Berry Harvester",
+            pay: "$10/hr",
+            location: "Farm B",
+            date: "Nov 21, 2025",
+          },
+        ]);
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchJobs();
+    
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const handleApply = async (jobId: number, audioBlob?: Blob) => {
     try {
-      // In a real app, you would upload the audio blob to the server
+      let audioUrl: string | undefined = undefined;
+
+      // Upload audio to Supabase storage if provided
       if (audioBlob) {
-        console.log("Audio blob size:", audioBlob.size);
-        // You could upload it here: await uploadAudio(jobId, audioBlob);
+        try {
+          console.log("Uploading audio file...", audioBlob.size, "bytes");
+          // Dynamically import to avoid crashing if storage module has issues
+          const { uploadAudioFile } = await import("../lib/storage");
+          audioUrl = await uploadAudioFile(audioBlob, `job-${jobId}`);
+          console.log("Audio uploaded successfully:", audioUrl);
+        } catch (uploadError) {
+          console.error("Error uploading audio:", uploadError);
+          const errorMessage = uploadError instanceof Error 
+            ? uploadError.message 
+            : "Unknown error";
+          
+          // Ask user if they want to continue without audio
+          const continueWithoutAudio = confirm(
+            `Failed to upload audio recording: ${errorMessage}\n\n` +
+            "Would you like to submit the application without the audio recording?"
+          );
+          
+          if (!continueWithoutAudio) {
+            return; // User cancelled
+          }
+          // Continue without audio_url
+        }
       }
 
       // Create contract via API with authentication
-      const { authenticatedFetch } = await import("../lib/api");
-      const response = await authenticatedFetch("http://localhost:8000/contracts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job_id: jobId }),
-      });
+      try {
+        const { authenticatedFetch } = await import("../lib/api");
+        
+        // Include worker_id and audio_url if available
+        const requestBody: any = { job_id: jobId };
+        if (user?.id) {
+          requestBody.worker_id = user.id;
+        }
+        if (audioUrl) {
+          requestBody.audio_url = audioUrl;
+        }
+        
+        const response = await authenticatedFetch("http://localhost:8000/contracts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
 
-      if (!response.ok) {
-        throw new Error("Failed to create contract");
+        if (!response.ok) {
+          let errorText = "Failed to create contract";
+          try {
+            const errorData = await response.json();
+            errorText = errorData.detail || errorData.message || errorText;
+          } catch {
+            try {
+              errorText = await response.text();
+            } catch {
+              // Use default error message
+            }
+          }
+          throw new Error(errorText);
+        }
+
+        const newContract: Contract = await response.json();
+
+        // Also save to localStorage as backup
+        try {
+          const existingContracts = localStorage.getItem("contracts");
+          const contracts: Contract[] = existingContracts
+            ? JSON.parse(existingContracts)
+            : [];
+          contracts.push(newContract);
+          localStorage.setItem("contracts", JSON.stringify(contracts));
+        } catch (storageErr) {
+          console.warn("Could not save to localStorage:", storageErr);
+        }
+
+        alert(
+          "Application submitted! The employer will review your application."
+        );
+      } catch (apiErr) {
+        console.error("Error applying to job:", apiErr);
+        const errorMessage = apiErr instanceof Error 
+          ? apiErr.message 
+          : "Error submitting application. Please try again.";
+        
+        // Provide more helpful error messages
+        if (errorMessage.includes("Network error") || errorMessage.includes("Failed to fetch")) {
+          alert("Could not connect to the server. Please make sure the backend is running at http://localhost:8000");
+        } else if (errorMessage.includes("worker")) {
+          alert("There was an issue with your account. Please try logging out and back in.");
+        } else {
+          alert(`Error: ${errorMessage}`);
+        }
       }
-
-      const newContract: Contract = await response.json();
-
-      // Also save to localStorage as backup
-      const existingContracts = localStorage.getItem("contracts");
-      const contracts: Contract[] = existingContracts
-        ? JSON.parse(existingContracts)
-        : [];
-      contracts.push(newContract);
-      localStorage.setItem("contracts", JSON.stringify(contracts));
-
-      alert(
-        "Application submitted! The employer will review your application."
-      );
     } catch (err) {
-      console.error("Error applying to job:", err);
-      alert("Error submitting application. Please try again.");
+      console.error("Unexpected error in handleApply:", err);
+      alert("An unexpected error occurred. Please try again.");
     }
   };
 
   const filteredJobs = useMemo(() => {
-    if (filter === "all") return jobs;
-    return jobs.filter((job) => {
-      const cropType = ((job as any)?.crop_type || "").toLowerCase();
-      return cropType === filter;
-    });
+    try {
+      if (filter === "all") return jobs;
+      return jobs.filter((job) => {
+        try {
+          const cropType = ((job as any)?.crop_type || "").toLowerCase();
+          return cropType === filter;
+        } catch (err) {
+          console.warn("Error filtering job:", err);
+          return false;
+        }
+      });
+    } catch (err) {
+      console.error("Error in filteredJobs:", err);
+      return jobs; // Return all jobs as fallback
+    }
   }, [jobs, filter]);
 
   const stats = useMemo(() => {
-    const workers = jobs.reduce(
-      (sum, job) => sum + (((job as any)?.workers_requested as number) || 0),
-      0
-    );
-    const audioFriendly = jobs.length;
-    const nextStart = jobs[0]?.date;
-    return { workers, audioFriendly, nextStart };
+    try {
+      const workers = jobs.reduce(
+        (sum, job) => {
+          try {
+            return sum + (((job as any)?.workers_requested as number) || 0);
+          } catch (err) {
+            return sum;
+          }
+        },
+        0
+      );
+      const audioFriendly = jobs.length;
+      const nextStart = jobs[0]?.date;
+      return { workers, audioFriendly, nextStart };
+    } catch (err) {
+      console.error("Error calculating stats:", err);
+      return { workers: 0, audioFriendly: 0, nextStart: undefined };
+    }
   }, [jobs]);
 
   return (
@@ -231,9 +347,14 @@ export default function JobsPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {filteredJobs.map((job) => (
-              <JobCard key={job.id} job={job} onApply={handleApply} />
-            ))}
+            {filteredJobs.map((job) => {
+              try {
+                return <JobCard key={job.id} job={job} onApply={handleApply} />;
+              } catch (err) {
+                console.error("Error rendering job card:", err, job);
+                return null;
+              }
+            })}
           </div>
         )}
       </main>

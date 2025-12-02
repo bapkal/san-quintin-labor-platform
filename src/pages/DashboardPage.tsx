@@ -26,15 +26,19 @@ export default function DashboardPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to post job");
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`Failed to post job: ${errorText}`);
       }
 
       const newJob: Job = await response.json();
-      alert("Job posted successfully!");
-      setSubmittedJobs([...submittedJobs, newJob]);
+      if (newJob) {
+        alert("Job posted successfully!");
+        setSubmittedJobs((prev) => [...prev, newJob]);
+      }
     } catch (error) {
       console.error("Error posting job:", error);
-      alert("Error posting job. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      alert(`Error posting job: ${errorMessage}. Please try again.`);
     }
   };
 
