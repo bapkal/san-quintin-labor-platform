@@ -17,7 +17,7 @@ export const getApiUrl = (): string => {
   }
   
   // Fallback to localhost for local development
-  return 'san-quintin-labor-platform-production.up.railway.app';
+  return 'https://san-quintin-labor-platform-production.up.railway.app';
 };
 
 export const API_URL = getApiUrl();
