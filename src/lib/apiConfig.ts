@@ -5,7 +5,7 @@
  */
 export const getApiUrl = (): string => {
   // Check for environment variable first (for production)
-  const apiUrl = import.meta.env.VITE_API_URL;
+  const apiUrl = import.meta.env.RAILWAY_API_URL;
   
   if (apiUrl) {
     // Ensure it has the protocol
